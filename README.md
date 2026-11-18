@@ -1,8 +1,11 @@
-# SWK OS Mobile
+# SWK Properties OS — Mobile
 
-Installable PWA, fully hardcoded (no backend, no build). Open `index.html` or serve the folder: `npx serve .`
+Installable PWA rebuilt on the SWKOS brand: gold/UAE-colour logos, Plus Jakarta Sans + Instrument Sans (+ Noto Sans Arabic for RTL), emerald/fold/graphite palette, community and property photos, all copied from `swkpropertiesuae/SWKOS`. No backend, no build step.
 
-Tabs: Home (KPIs, tasks, attendance), Pipeline (deals, leads, 3-department workflow), Market (DLD medians), Tools (mortgage, cost to close, yield, 50/50 commission, RERA rent), More (team, compliance, 14 modules, company).
+Run: `npx serve .` (offline caching needs http, not file://).
 
-Sources: `SWKOS` (roles, departments, modules, compliance, brand), `data` (market figures in `data.js`), `swkapp` (calculator rules in `calc.js`). `SWKAI` already holds the native Android wrapper (`ae.swkproperties.one`).
-Deals, leads, KPIs, staff names beyond the 3 named managers, and bank rates are illustrative placeholders.
+- Launcher: 12 app tiles, search, recents, quick create — full SWKOS nav tree (`data.js`, from `src/web/swk/nav.ts`).
+- Built screens: Overview, Pipeline (3 departments), Market Pulse (DLD data from `swkpropertiesuae/data`), Properties/Units/Listings/Off-plan, Calendar, Reception check-in (Dubai time, 10:05 grace), Toolkit calculators, Leaderboard, Compliance, Handover docs, plus sample record lists for ~25 features.
+- Other features show their workflow position only.
+
+Operational records (deals, leads, staff beyond the 3 managers, KPIs, bank rates) are illustrative placeholders.
