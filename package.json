@@ -1,0 +1,1 @@
+{"name":"swk-os-mobile","version":"1.0.0","private":true,"type":"module","description":"SWK Properties OS mobile client (PWA) for the SWKOS API","scripts":{"start":"node scripts/serve.mjs","test":"node --test tests/unit.test.mjs","test:e2e":"node tests/e2e.mjs","check":"node scripts/check.mjs"},"engines":{"node":">=20"}}

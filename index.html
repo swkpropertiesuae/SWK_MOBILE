@@ -3,13 +3,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#025e3d">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://os.swk.properties https://*.swk.properties https://*.swkpropertiesuae.com http://localhost:* http://127.0.0.1:*; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <title>SWK Properties OS</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="assets/icons/32.png">
 <link rel="apple-touch-icon" href="assets/icons/apple.png">
 <link rel="stylesheet" href="style.css">
 </head><body>
-<div id="v"></div>
-<nav class="dock" id="dock" aria-label="Primary"></nav>
-<script src="data.js"></script><script src="calc.js"></script><script src="app.js"></script>
+<div id="net" class="net" role="status" hidden>You are offline — changes cannot be saved.</div>
+<main id="v" tabindex="-1"></main>
+<nav class="dock" id="dock" aria-label="Primary" hidden></nav>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<noscript><p style="padding:24px">SWK OS Mobile needs JavaScript.</p></noscript>
+<script src="config.js"></script>
+<script type="module" src="app.js"></script>
 </body></html>
