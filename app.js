@@ -57,6 +57,7 @@ async function render() {
   view = { ...v, parts, reload: () => render() }
   if (v.launcher) root.innerHTML = launcher(sessionQ).s
   else root.innerHTML = barHtml(v.title).s + v.body.s
+  root.classList.remove('enter'); void root.offsetWidth; root.classList.add('enter')
   paint(); view.after?.(view)
   if (parts[0] === 'e' && parts[1] && !parts[2]) remember('#/e/' + parts[1])
   document.title = (v.title ? v.title + ' · ' : '') + 'SWK OS'
@@ -79,7 +80,7 @@ document.addEventListener('click', async e => {
   if (e.target.closest('[data-act-back]')) { history.length > 1 ? history.back() : (location.hash = ''); return }
   const el = e.target.closest('[data-act]'); if (!el) return
   const fn = ACTIONS[el.dataset.act]; if (!fn) return
-  e.preventDefault()
+  e.preventDefault(); navigator.vibrate?.(6)
   try { const r = await fn(el, view); if (r === 'reload') await render() } catch (x) { toast(x.message || 'Action failed', 'bad') }
 })
 document.addEventListener('submit', e => {

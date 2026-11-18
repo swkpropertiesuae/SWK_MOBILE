@@ -5,6 +5,7 @@ import { aed, num, short, date, datetime, dubaiParts, TZ } from '../lib/format.j
 import { $, $$, toast, empty, errorCard, chip, statusClass, humanize, confirmSheet, reasonSheet } from '../lib/ui.js'
 import { closing, pmt, split, rera, grossYield } from '../lib/calc.js'
 import { routeFor } from '../lib/routes.js'
+import { kpiTile, countUp } from '../lib/viz.js'
 
 // ---------------------------------------------------------------- generic object card (server shapes vary per feature)
 const TITLE_KEYS = ['title', '_title', 'name', 'deal_name', 'company', 'job_no', 'record_label', 'record_title', 'bin_no', 'withdrawal_no', 'client_name', 'label', 'subject', 'description']
@@ -21,14 +22,15 @@ const listOf = r => Array.isArray(r) ? r : r?.items || r?.rows || []
 // ---------------------------------------------------------------- dashboard
 const KPI = [['pipeline_value', 'Pipeline value', 'aed'], ['open_jobs', 'Open deal files'], ['leads_new', 'New leads'], ['leads_today', 'Leads today'], ['viewings_week', 'Viewings this week'], ['offers_pending', 'Pending offers'], ['mandates_active', 'Active mandates'], ['mandates_expiring', 'Mandates expiring'], ['properties_available', 'Available properties'], ['vacant_units', 'Vacant units'], ['renewals_due', 'Renewals due'], ['arrears_aed', 'Rent arrears', 'aed'], ['maintenance_open', 'Open maintenance'], ['received_month', 'Received this month', 'aed'], ['commission_expected', 'Commission expected', 'aed'], ['revenue_month', 'Revenue this month', 'aed'], ['profit_month', 'Profit this month', 'aed'], ['ar_outstanding', 'Receivables', 'aed'], ['ap_outstanding', 'Payables', 'aed'], ['cash', 'Cash', 'aed'], ['tickets_open', 'Open tickets'], ['my_tasks', 'My tasks'], ['compliance_issues', 'Compliance issues']]
 export async function dashboard() {
-  const d = await get('/api/dashboard')
+  const [d, pulse] = await Promise.all([get('/api/dashboard'), get('/api/dashboard/pulse').catch(() => null)])
   const k = d.kpis || {}, shown = KPI.filter(x => k[x[0]] != null)
   const f = d.charts?.pipeline_funnel || [], max = Math.max(1, ...f.map(x => x.count))
   const lists = Object.entries(d.lists || {}).filter(([, v]) => Array.isArray(v) && v.length)
   const alerts = (d.alerts || []).map(a => typeof a === 'string' ? { text: a } : a)
   return {
-    title: 'Overview', body: h`<div class="wrap">
+    title: 'Overview', after: () => countUp(), body: h`<div class="wrap">
     ${k.pipeline_value != null ? h`<div class="card cash"><small>Pipeline value</small><span class="n">${aed(k.pipeline_value)}</span><small>${k.open_jobs ?? 0} open deal files</small></div>` : ''}
+    ${pulse ? h`<div class="lbl">Last 7 days</div><div class="kts">${[['leads', 'New leads'], ['viewings', 'Viewings'], ['calls', 'Calls']].filter(([key]) => Array.isArray(pulse[key])).map(([key, label]) => kpiTile({ label, value: pulse[key].reduce((a, x) => a + x.n, 0), series: pulse[key].map(x => x.n), sub: 'vs previous 3 days' }))}</div>` : ''}
     <div class="grid2">${shown.filter(x => x[0] !== 'pipeline_value').map(([key, l, t]) => h`<div class="k"><b>${t === 'aed' ? aed(k[key]) : num(k[key])}</b><span>${l}</span></div>`)}</div>
     ${alerts.length ? h`<div class="lbl">Needs attention</div><div class="list">${alerts.map(a => h`<div class="li warnbar"><span class="tx"><b>${a.title || a.text || a.message || a.label || 'Alert'}</b><small>${a.detail || a.body || ''}</small></span></div>`)}</div>` : ''}
     ${f.length ? h`<div class="lbl">Sales funnel</div><div class="card">${f.map(s => h`<div class="fn"><span>${s.stage}</span><div class="progress"><i data-w="${Math.round(s.count / max * 100)}"></i></div><b>${s.count}</b></div>`)}</div>` : ''}
