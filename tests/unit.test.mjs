@@ -21,3 +21,10 @@ test('format', () => {
   assert.equal(optLabelOf(f, 'b'), 'Bee'); assert.equal(fmtField({ name: 'r', type: 'ref' }, { r: 3, _labels: { r: 'Acme' } }), 'Acme'); assert.equal(fmtField({ name: 'x', type: 'bool' }, { x: 1 }), 'Yes')
 })
 test('nav is structural only', () => { assert.equal(NAV.length, 12); for (const s of NAV) for (const i of s.items) assert.ok(i[1].startsWith('/')) })
+import { buildNsc } from '../scripts/gen-nsc.mjs'
+import { readFileSync } from 'node:fs'
+test('pin config is valid, pinned to the API host, cleartext off', () => {
+  const f = JSON.parse(readFileSync(new URL('../android/pins.json', import.meta.url))), x = buildNsc({ domain: f.domain, expiration: f.expiration, pins: f.pins.map(p => p.pin) })
+  assert.match(x, /<domain includeSubdomains="false">os\.swk\.properties<\/domain>/); assert.equal((x.match(/<pin digest="SHA-256">/g) || []).length, f.pins.length); assert.match(x, /cleartextTrafficPermitted="false"/); assert.ok(!/src="user"/.test(x))
+  assert.throws(() => buildNsc({ domain: 'a', expiration: '2099-01-01', pins: ['x'] })); assert.throws(() => buildNsc({ domain: 'a', expiration: '2099-01-01', pins: ['hxqRlPTu1bMS/0DITB1SSu0vd4u/8l8TjPgfaAp63Gc='] })); assert.throws(() => buildNsc({ domain: 'a', expiration: '2000-01-01', pins: f.pins.map(p => p.pin) }))
+})

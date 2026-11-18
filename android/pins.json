@@ -1,0 +1,22 @@
+{
+  "domain": "os.swk.properties",
+  "expiration": "2027-06-30",
+  "_note": "CA-level pins, not leaf pins: Cloudflare re-issues os.swk.properties every few weeks with new keys, rotating between Google Trust Services, Let's Encrypt and SSL.com (13 certificates 2026-10-29..11-16 per Certificate Transparency). Intermediates were taken from CT (certspotter pubkey_sha256); roots computed from the system trust store. Re-run scripts/verify-pins.mjs and refresh before the expiration date.",
+  "pins": [
+    { "name": "GTS Root R1", "pin": "hxqRlPTu1bMS/0DITB1SSu0vd4u/8l8TjPgfaAp63Gc=" },
+    { "name": "GTS Root R3", "pin": "QXnt2YHvdHR3tJYmQIr0Paosp6t/nggsEGD4QJZ3Q0g=" },
+    { "name": "GTS Root R4", "pin": "mEflZT5enoR1FuXLgYYGqnVEoZvmf9c2bVBpiOjYQ0c=" },
+    { "name": "GlobalSign Root CA R3 (GTS cross-sign, older Android)", "pin": "cGuxAXyFXFkWm61cF4HPWX8S0srS9j0aSqN0k4AP+4A=" },
+    { "name": "GTS WE1 (intermediate)", "pin": "kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=" },
+    { "name": "GTS WR1 (intermediate)", "pin": "yDu9og255NN5GEf+Bwa9rTrqFQ0EydZ0r1FCh9TdAW4=" },
+    { "name": "ISRG Root X1", "pin": "C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=" },
+    { "name": "ISRG Root X2", "pin": "diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=" },
+    { "name": "Let's Encrypt YE1 (intermediate)", "pin": "brzvtCELCIZUo4sD/qPX0ccRtPsd3DY6RfmxpOU9oB4=" },
+    { "name": "Let's Encrypt YE2 (intermediate)", "pin": "s/tdAOmUzd8syaTuqfgGvFcn6DzA5Cmb+Vby1ST+U3Y=" },
+    { "name": "SSL.com TLS ECC Root CA 2022", "pin": "G/ANXI8TwJTdF+AFBM8IiIUPEv0Gf6H5LA/b9guG4yE=" },
+    { "name": "SSL.com TLS RSA Root CA 2022", "pin": "K89VOmb1cJAN3TK6bf4ezAbJGC1mLcG2Dh97dnwr3VQ=" },
+    { "name": "SSL.com Root CA ECC", "pin": "oyD01TTXvpfBro3QSZc1vIlcMjrdLTiL/M9mLCPX+Zo=" },
+    { "name": "SSL.com Root CA RSA", "pin": "0cRTd+vc1hjNFlHcLgLCHXUeWqn80bNDH/bs9qMTSPo=" },
+    { "name": "Cloudflare TLS Issuing ECC CA 4 (intermediate)", "pin": "GVnjj7fT/Ba+5eIOg04sZme/Dp5rmAa4a9QKbWbHFtA=" }
+  ]
+}
