@@ -4,4 +4,9 @@
     <string name="title_activity_main">SWK OS</string>
     <string name="package_name">ae.swkproperties.os</string>
     <string name="custom_url_scheme">ae.swkproperties.os</string>
+    <string name="duty_channel_name">Active field duty location sharing</string>
+    <string name="duty_channel_description">Persistent status indicator while an authorised field duty is active.</string>
+    <string name="duty_notification_title">SWK OS · Field duty active</string>
+    <string name="duty_notification_stop">End field duty</string>
+    <string name="biometric_title">SWK OS verification</string>
 </resources>

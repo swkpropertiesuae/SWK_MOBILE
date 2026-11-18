@@ -118,3 +118,4 @@ dialog.sheet::backdrop{background:rgba(10,25,18,.5)}
 .card.cash small{display:block}
 @media (prefers-color-scheme:dark){:root{--bg:#0f1713;--card:#17211c;--ink:#eef3f0;--body:#c5d0ca;--mut:#9db0a6;--line:#27342d;--line2:#3a4a41;--soft:#1d2a23;--tint:#18322a;--champ:#241f14}input,select,textarea,.pick{background:#0f1713;color:var(--ink)}.bar{background:rgba(15,23,19,.92)}nav.dock{background:rgba(23,33,28,.96)}.search{background:#17211c;color:var(--mut)}.card.err{background:#2a1519}}
 .crow{display:grid;gap:8px;padding:10px 0;border-top:1px solid var(--line)}.crows{display:grid}
+.lockscreen{position:fixed;inset:0;z-index:50;background:var(--bg);display:grid;place-content:center;justify-items:center;gap:14px;padding:24px;text-align:center}.lockscreen .logo{height:70px}

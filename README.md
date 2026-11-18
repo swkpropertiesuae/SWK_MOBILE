@@ -23,3 +23,8 @@ All API data is HTML-escaped (`lib/html.js`); strict CSP, no inline scripts/hand
 
 ## Known limits
 Online only (writes are not queued offline). Withdrawals creation, Reception check-in and 2FA enrolment happen in the web app. Not load- or penetration-tested; native store packaging (Capacitor/Android: see `SWKAI`) is not included.
+
+## Android release (hardened)
+`SWK_KEYSTORE_FILE SWK_KEYSTORE_PASSWORD SWK_KEY_ALIAS SWK_KEY_PASSWORD` (env, never committed) then `npm run android:release`. Optional TLS pinning: `SWK_SPKI_PINS="<pin1>,<pin2>" SWK_PIN_DOMAIN=os.swk.properties` (get pins with `scripts/spki-pin.sh <host>` from a trusted network; at least two).
+Native hardening: v2+v3 APK signing (SHA-256), R8 shrink/obfuscation, minSdk 24, HTTPS-only + system CA trust only, backups disabled, FLAG_SECURE (no screenshots/recents), session token in Android Keystore (AES-256-GCM) via `SwkSecure`, biometric/device-credential re-lock after 45 s in background, 10 min idle sign-out, rooted/debuggable/emulator refusal (best effort), mandatory written reasons for edits/deletes/lost leads, Lead Command (SLA breaches, follow-ups, conversion rate), Field Duty (30 s GPS batches, SOS; server rejects mock/stale fixes).
+**Policy enforcement lives in the SWK OS server** (roles, approvals, audit log, workflow rules). The app cannot make fraud impossible; it removes client-side shortcuts and records identity + reason for every change.

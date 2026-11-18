@@ -1,24 +1,26 @@
 import { h, raw } from './lib/html.js'
-import { isAuthed, getSession, logout, get } from './lib/api.js'
+import { isAuthed, getSession, logout, get, initSession } from './lib/api.js'
+import { isNative, integrity, biometricAvailable, biometricAuth } from './lib/native.js'
 import { X, loadMeta, entity, resetState } from './lib/state.js'
 import { $, $$, toast, spinner, errorCard, confirmSheet } from './lib/ui.js'
 import { loginView, changePasswordView } from './views/auth.js'
 import { launcher, appView, remember, svg } from './views/launcher.js'
 import { entityList, entityDetail, entityForm, listActions, detailActions, formActions, listSearch, submitForm, pickRef, notFound } from './views/entity.js'
 import * as P from './views/pages.js'
+import { leadCommand, fieldDuty, opsActions } from './views/ops.js'
 
 const root = $('#v'), dock = $('#dock')
-const IDLE_MS = (globalThis.SWK_CONFIG?.IDLE_MINUTES ?? 30) * 60000
+const IDLE_MS = (globalThis.SWK_CONFIG?.IDLE_MINUTES ?? 10) * 60000
 let view = null, token = 0, unread = 0, sessionQ = ''
 const DOCK = [['', 'Apps', 'apps'], ['p/dashboard', 'Overview', 'command'], ['p/market', 'Market', 'mkt'], ['p/calendar', 'Calendar', 'cal'], ['account', 'Account', 'user']]
 const ACTIONS = {
-  ...listActions, ...detailActions, ...formActions, ...P.marketActions, ...P.calActions, ...P.binActions, ...P.notifActions, ...P.tkActions,
+  ...listActions, ...detailActions, ...formActions, ...P.marketActions, ...P.calActions, ...P.binActions, ...P.notifActions, ...P.tkActions, ...opsActions,
   retry: () => 'reload',
   rtl: () => { document.documentElement.dir = document.documentElement.dir === 'rtl' ? 'ltr' : 'rtl'; try { localStorage.setItem('swk.dir', document.documentElement.dir) } catch {} },
   logout: async () => { if (await confirmSheet('Sign out', 'You will need to sign in again.', 'Sign out')) await signOut() },
   pick: el => pickRef(el)
 }
-const PAGES = { dashboard: P.dashboard, pipeline: P.pipeline, market: P.market, calendar: P.calendar, bin: P.bin, withdrawals: P.withdrawals, toolkit: P.toolkit }
+const PAGES = { dashboard: P.dashboard, pipeline: P.pipeline, market: P.market, calendar: P.calendar, bin: P.bin, withdrawals: P.withdrawals, toolkit: P.toolkit, leadcmd: leadCommand, fieldduty: fieldDuty }
 
 async function resolve(parts) {
   const [a, b, c, d] = parts
@@ -106,4 +108,30 @@ try { const d = localStorage.getItem('swk.dir'); if (d) document.documentElement
 addEventListener('error', e => console.error(e.error || e.message))
 addEventListener('unhandledrejection', e => console.error(e.reason))
 if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {})
-render().then(refreshUnread)
+
+// ---- device integrity gate + background lock (native app)
+const CFG = globalThis.SWK_CONFIG || {}
+async function integrityGate() {
+  if (!isNative() || CFG.BLOCK_COMPROMISED_DEVICES === false) return true
+  try { const i = await integrity(); if (i.rooted || i.debuggable || i.emulator) { dock.hidden = true; root.innerHTML = h`<div class="wrap"><div class="card err"><b class="hd t">Device not permitted</b><span class="m">${i.rooted ? 'This device appears to be rooted.' : i.debuggable ? 'This build is debuggable.' : 'Emulators are not permitted.'} Company data cannot be opened here.</span></div></div>`.s; return false } } catch {}
+  return true
+}
+let hiddenAt = 0, locked = false
+async function lock() {
+  if (locked || !isAuthed() || !isNative()) return
+  locked = true
+  const bio = await biometricAvailable().catch(() => false)
+  const ov = document.createElement('div'); ov.className = 'lockscreen'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', 'App locked')
+  ov.innerHTML = h`<img class="logo" src="assets/brand/logo-horizontal.png" alt="SWK OS"><b class="hd">Locked</b><span class="m">${bio ? 'Verify to continue.' : 'No screen lock is set up. Sign in again.'}</span>${bio ? h`<button class="btn" data-lk="unlock">Unlock</button>` : ''}<button class="btn out" data-lk="out">Sign out</button>`.s
+  document.body.append(ov)
+  const done = () => { ov.remove(); locked = false; bump() }
+  const tryUnlock = async () => { try { if (await biometricAuth('Unlock SWK OS')) done() } catch { toast('Verification failed', 'bad') } }
+  ov.addEventListener('click', async e => { const b = e.target.closest('[data-lk]'); if (!b) return; if (b.dataset.lk === 'out') { ov.remove(); locked = false; await signOut() } else tryUnlock() })
+  if (bio) tryUnlock(); else { ov.remove(); locked = false; await signOut() }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) hiddenAt = Date.now()
+  else if (hiddenAt && Date.now() - hiddenAt > (CFG.LOCK_SECONDS ?? 45) * 1000) lock()
+})
+await initSession()
+if (await integrityGate()) render().then(refreshUnread)

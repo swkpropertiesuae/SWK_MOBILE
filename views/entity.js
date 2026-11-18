@@ -123,7 +123,7 @@ export async function entityForm(key, id) {
     body: h`<form class="wrap" id="ef" novalidate data-entity="${key}">
       ${sections.map(s => h`<div class="card"><div class="lbl">${s.name}</div>${s.fields.map(f => input(f, rec, !id))}</div>`)}
       ${(def.children || []).filter(c => !c.fixed).map(c => childEditor(c, rec.children?.[c.key] || []))}
-      ${id ? h`<div class="card"><label>Reason for change (audit log)<input id="reason" maxlength="300" placeholder="Why are you editing this record?"></label></div>` : ''}
+      ${id ? h`<div class="card"><label>Reason for change (required, audited)<input id="reason" maxlength="300" placeholder="Why are you editing this record?"></label></div>` : ''}
       <p class="bad-t" id="fe" role="alert"></p>
       <div class="row gap"><a class="btn out" href="#/e/${key}${id ? '/' + id : ''}">Cancel</a><button class="btn" type="submit">${id ? 'Save changes' : 'Create'}</button></div>
     </form>`
@@ -187,6 +187,7 @@ export async function submitForm(form, v) {
   err.textContent = ''; $$('.bad-in').forEach(x => x.classList.remove('bad-in'))
   const { out, errs } = readForm(def, form)
   if (errs.length) { err.textContent = 'Check: ' + errs.map(f => f.label).join(', '); errs.forEach(f => form.elements[f.name]?.classList.add('bad-in')); return }
+  if (id && ($('#reason')?.value.trim().length || 0) < 5) { err.textContent = 'Enter a reason for the change (min 5 characters). Every edit is audited.'; $('#reason')?.focus(); return }
   const btn = $('button[type=submit]', form); btn.disabled = true
   try {
     const r = id ? await put(`/api/e/${key}/${id}`, { ...out, version: rec.version }, { headers: reasonHeader($('#reason')?.value.trim()) }) : await post(`/api/e/${key}`, out)
