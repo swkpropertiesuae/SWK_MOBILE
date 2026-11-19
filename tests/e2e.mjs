@@ -3,12 +3,13 @@ import { createRequire } from 'node:module'
 const { chromium, devices } = createRequire(import.meta.url)('playwright')
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-const API = process.env.SWK_API || 'http://localhost:8080', EMAIL = process.env.SWK_EMAIL || 'shabib@swk.properties', PW = process.env.SWK_PASSWORD, SH = process.env.SWK_SHOTS
+const API = process.env.SWK_API || 'http://localhost:8090', EMAIL = process.env.SWK_EMAIL || 'shabib@swk.properties', PW = process.env.SWK_PASSWORD, SH = process.env.SWK_SHOTS
 if (!PW) { console.error('Set SWK_PASSWORD'); process.exit(2) }
 const srv = spawn(process.execPath, ['scripts/serve.mjs'], { env: { ...process.env, PORT: '5173' }, stdio: 'ignore' }); await new Promise(r => setTimeout(r, 600))
-const b = await chromium.launch(), c = await b.newContext({ ...devices['iPhone 13'] }), p = await c.newPage(), errs = []
+const b = await chromium.launch(), c = await b.newContext({ ...devices['iPhone 13'], geolocation: { latitude: 25.2, longitude: 55.27, accuracy: 10 }, permissions: ['geolocation'] }), p = await c.newPage(), errs = []
 await p.route('**/config.js', r => r.fulfill({ contentType: 'text/javascript', body: `globalThis.SWK_CONFIG={API_BASE:${JSON.stringify(API)},IDLE_MINUTES:30}` }))
 p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error' && !/401|Failed to load resource/.test(m.text())) errs.push(m.text()) })
+if (process.env.DEBUG_SYNC) p.on('response', async r => { if (r.url().includes('/api/sync')) console.log('   sync', r.status(), (await r.text().catch(() => 'aborted')).slice(0, 110)) })
 const shot = n => SH && p.screenshot({ path: `${SH}/${n}.png` })
 const step = async (n, f) => { try { await f(); console.log('ok  ', n) } catch (e) { console.log('FAIL', n, e.message.split('\n')[0]); errs.push(n) } }
 await p.goto('http://localhost:5173/')
@@ -42,7 +43,30 @@ await step('lead command: log + lost', async () => {
   await p.fill('#nt', 'Spoke to client about budget'); await p.click('#go'); await p.waitForSelector('dialog.sheet', { state: 'detached' }); await p.waitForTimeout(800)
   await p.click('[data-act=lclost]'); await p.fill('#rs', 'client went elsewhere'); await p.click('[data-x=yes]'); await p.waitForTimeout(800)
 })
-await step('field duty degrades cleanly without mobile API', async () => { await p.goto('http://localhost:5173/#/p/fieldduty'); await p.waitForSelector('.wrap .card, .wrap .state'); })
+await step('employee profile for attendance', async () => { await p.evaluate(async () => { const { get, post } = await import('/lib/api.js'); const me = await get('/api/auth/me'); const r = await get('/api/e/employees', { pageSize: 100 }); if (!r.rows.some(e => e.user_id === me.id)) await post('/api/e/employees', { name: me.name, user_id: me.id, email: me.email, designation: 'Owner', status: 'Active' }) }) })
+await step('office GPS check-in', async () => { await p.goto('http://localhost:5173/#/p/attendance'); await p.waitForSelector('[data-act=att-in]'); await p.click('[data-act=att-in]'); await p.waitForSelector('[data-act=att-out]', { timeout: 8000 }); await shot('attendance') })
+await step('check-out blocked until daily report + plan', async () => { await p.click('[data-act=att-out]'); await p.waitForURL(/dailyclose/, { timeout: 8000 }) })
+await step('daily close is strict, then submits', async () => {
+  await p.waitForSelector('#dco'); await p.fill('#dco', 'too short'); await p.fill('#dcn', 'short'); await p.click('[data-act=dc-submit]'); assert.match(await p.innerText('#dce'), /30 characters/)
+  await p.fill('#dco', 'Closed two viewings and followed up with five hot leads, sent three offers.'); await p.fill('#dcn', 'Call the three offer clients first, then send two property shortlists.'); await p.click('[data-act=dc-submit]'); await p.click('[data-x=yes]')
+  await p.waitForSelector('text=Submitted ✓', { timeout: 8000 }); await shot('dailyclose')
+})
+await step('check-out works after report', async () => { await p.goto('http://localhost:5173/#/p/attendance'); await p.waitForSelector('[data-act=att-out]'); await p.click('[data-act=att-out]'); await p.waitForSelector('text=Checked out', { timeout: 8000 }) })
+await step('team live roster', async () => { await p.goto('http://localhost:5173/#/p/teamlive'); await p.waitForSelector('.card .hd'); assert.match(await p.innerText('.wrap'), /Checked out|In office/); await shot('teamlive') })
+await step('REAL-TIME: another device creates a lead, this screen updates by itself', async () => {
+  await p.goto('http://localhost:5173/#/e/leads'); await p.waitForSelector('#lq'); await p.fill('#lq', ''); await p.waitForTimeout(700); await p.waitForFunction(() => document.querySelector('.live')?.dataset.live === 'live', null, { timeout: 15000 })
+  const before = await p.locator('#lrows .li').count(), name = 'LIVE-' + Date.now()
+  const t0 = Date.now()
+  const tok = await p.evaluate(async () => (await import('/lib/api.js')).getSession().token)  // a second, independent HTTP client (stands in for another device)
+  const res = await fetch(API + '/api/e/leads', { method: 'POST', headers: { 'content-type': 'application/json', 'x-swk-client': 'android', 'x-swk-session': tok }, body: JSON.stringify({ company: name }) }); assert.equal(res.status, 201)
+  await p.waitForFunction(n => document.querySelector('#lrows')?.innerText.includes(n), name, { timeout: 5000 }).catch(async e => { console.log('     DEBUG rows:', JSON.stringify((await p.innerText('#lrows')).slice(0, 200)), 'q=', await p.inputValue('#lq'), 'hash=', await p.evaluate(() => location.hash), 'dialog=', await p.locator('dialog[open]').count(), 'active=', await p.evaluate(() => document.activeElement?.tagName + '#' + document.activeElement?.id)); throw e }); const ms = Date.now() - t0; console.log('     live latency ms:', ms); assert.ok(ms < 3000)
+})
+await step('utilities: calculators + AI guard', async () => {
+  await p.goto('http://localhost:5173/#/p/toolkit/roi'); await p.waitForSelector('#p'); await p.fill('#p', '1000000'); await p.fill('#a', '80000'); assert.match(await p.innerText('#o'), /Net yield/)
+  await p.goto('http://localhost:5173/#/p/toolkit/units'); await p.fill('#sm', '100'); assert.equal(await p.inputValue('#sf'), '1076.39')
+  await p.goto('http://localhost:5173/#/p/utilities'); await p.waitForSelector('#ai-in'); await p.fill('#ai-in', 'Client viewed JVC 1BR yesterday'); await p.click('[data-act=ai-run]'); await p.waitForSelector('.toast.show.bad', { timeout: 8000 }); assert.match(await p.innerText('#toast'), /not connected/i)
+})
+await step('no handover / manual anywhere in the app', async () => { await p.goto('http://localhost:5173/#/app/tools'); await p.waitForSelector('.li'); const t = (await p.innerText('.wrap')).toLowerCase(); assert.ok(!/handover|company manual|manual articles/.test(t), t.slice(0, 200)) })
 await step('dashboard', async () => { await p.goto('http://localhost:5173/#/p/dashboard'); await p.waitForSelector('.grid2, .state'); await shot('dashboard') })
 await step('market + area', async () => { await p.goto('http://localhost:5173/#/p/market'); await p.waitForSelector('a.card.link'); await shot('market'); await p.click('a.card.link'); await p.waitForSelector('.kv2') })
 await step('calendar', async () => { await p.goto('http://localhost:5173/#/p/calendar'); await p.waitForSelector('.lbl, .state'); await shot('calendar') })

@@ -4,7 +4,6 @@ import { get, post, put, base, getSession, reasonHeader, ApiError } from '../lib
 import { entity, can, X } from '../lib/state.js'
 import { optValue, datetime, num } from '../lib/format.js'
 import { $, toast, empty, errorCard, chip, statusClass, sheet, reasonSheet, confirmSheet } from '../lib/ui.js'
-import { isNative, startDuty, stopDuty, deviceInfo, telemetry } from '../lib/native.js'
 
 const DONE = /convert|lost|disqual|closed|unqualif|junk/i
 const mins = ms => Math.round(ms / 60000)
@@ -65,49 +64,5 @@ export const opsActions = {
     const st = def.fields.find(f => f.name === 'status').options.map(optValue).find(s => /lost|unqualif|disqual/i.test(s))
     if (!st) { toast('This workspace has no “lost” status.', 'bad'); return }
     try { const l = LC.leads.find(x => x.id === +el.dataset.id); await put(`/api/e/leads/${el.dataset.id}`, { status: st, ...(opt ? { non_conversion_reason: opt } : {}), non_conversion_notes: reason, version: l?.version }, { headers: reasonHeader(reason) }); toast('Lead closed'); return 'reload' } catch (e) { toast(e.message, 'bad') }
-  },
-  // ---- field duty
-  async fdstart(el) {
-    const loc = $('#fdl')?.value.trim(); if (!loc || loc.length < 3) { toast('Enter the assigned location.', 'bad'); return }
-    el.disabled = true
-    try {
-      const pos = await new Promise((ok, no) => navigator.geolocation.getCurrentPosition(ok, no, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }))
-      if (pos.coords.accuracy > 100) throw new Error('GPS accuracy is too low (' + Math.round(pos.coords.accuracy) + ' m). Move to open sky and retry.')
-      const r = await post('/api/swk-one/field-duty/start', { assigned_location: loc, scheduled_minutes: +($('#fdm')?.value || 120), lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy_m: pos.coords.accuracy })
-      const id = r.session?.id; if (!id) throw new Error('Server did not return a duty session.')
-      if (isNative()) {
-        const info = await deviceInfo(), s = await startDuty({ sessionId: id, assignedLocation: loc, serverUrl: base(), sessionToken: getSession().token, deviceId: info.device_id })
-        if (!s.started) { toast(s.reason === 'location_permission_required' ? 'Allow location access, then tap Start again.' : 'Could not start tracking: ' + s.reason, 'bad'); return 'reload' }
-      }
-      toast('Field duty started'); return 'reload'
-    } catch (e) { toast(e.code === 1 ? 'Location permission denied.' : e.message, 'bad') } finally { el.disabled = false }
-  },
-  async fdend(el) {
-    if (!await confirmSheet('End field duty', 'Location tracking stops and the session is closed.', 'End duty')) return
-    try {
-      const pos = await new Promise(ok => navigator.geolocation.getCurrentPosition(ok, () => ok(null), { enableHighAccuracy: true, timeout: 10000 }))
-      await post(`/api/swk-one/field-duty/${el.dataset.id}/end`, pos ? { lat: pos.coords.latitude, lng: pos.coords.longitude } : {})
-      if (isNative()) await stopDuty(); toast('Field duty ended'); return 'reload'
-    } catch (e) { toast(e.message, 'bad') }
-  },
-  async fdsos(el) {
-    const reason = await reasonSheet('Emergency SOS', 'Alerts the Owner and Manager immediately with your location.', 'Send SOS', true); if (!reason) return
-    try {
-      const pos = await new Promise(ok => navigator.geolocation.getCurrentPosition(ok, () => ok(null), { enableHighAccuracy: true, timeout: 8000 }))
-      await post('/api/swk-one/field-duty/sos', { session_id: +el.dataset.id, reason, ...(pos ? { lat: pos.coords.latitude, lng: pos.coords.longitude } : {}) }); toast('SOS sent'); return 'reload'
-    } catch (e) { toast(e.message, 'bad') }
   }
-}
-export async function fieldDuty() {
-  let w
-  try { w = await get('/api/mobile/workday') } catch (e) {
-    if (e.status === 404) return { title: 'Field Duty', body: h`<div class="wrap">${errorCard({ status: 404, message: 'This SWK OS server does not provide field duty yet (needs the SWK ONE mobile API).' }, false)}</div>` }
-    throw e
-  }
-  const active = (w.field || []).find(s => /Active|SOS/.test(s.status || '')), tel = isNative() ? await telemetry().catch(() => null) : null
-  return { title: 'Field Duty', body: h`<div class="wrap">
-    ${active ? h`<div class="card cash"><small>On duty · ${active.status}</small><span class="n">${active.assigned_location || 'Field duty'}</span><small>Until ${datetime(active.scheduled_end)}${tel ? ` · battery ${tel.battery_pct}% · ${tel.network_type} · GPS ${tel.duty_service_running ? 'sharing' : 'NOT sharing'}` : ''}</small></div>
-      <div class="row gap"><button class="btn danger" data-act="fdsos" data-id="${active.id}">SOS emergency</button><button class="btn out" data-act="fdend" data-id="${active.id}">End duty</button></div>`
-    : h`<div class="card"><b class="hd t">Start field duty</b><span class="m">Live GPS is shared with SWK OS every 30 s while on duty. Mock locations are rejected by the server.</span><label>Assigned location<input id="fdl" maxlength="120" placeholder="Building / community"></label><label>Duration (minutes)<input id="fdm" inputmode="numeric" value="120"></label><button class="btn" data-act="fdstart">Start duty</button></div>`}
-    <div class="lbl">Today</div><div class="list">${(w.field || []).length ? w.field.map(s => h`<div class="li"><span class="tx"><b>${s.assigned_location || 'Field duty'}</b><small>${datetime(s.scheduled_start)} → ${datetime(s.scheduled_end)}</small></span>${chip(s.status, statusClass(s.status))}</div>`) : empty('No duty sessions today')}</div></div>` }
 }

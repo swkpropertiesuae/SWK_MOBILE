@@ -29,13 +29,14 @@ export const entityList = key => {
     after: () => loadList(true)
   }
 }
-async function loadList(reset) {
+async function loadList(reset, silent = false) {
   const def = entity(L.key), rows = $('#lrows'), foot = $('#lfoot'); if (!rows) return
   if (L.busy) return; L.busy = true
-  if (reset) { L.page = 1; L.rows = []; rows.innerHTML = spinner().s; foot.innerHTML = '' }
+  const keep = silent ? Math.min(100, Math.max(PAGE, L.rows.length)) : PAGE
+  if (reset && !silent) { L.page = 1; L.rows = []; rows.innerHTML = spinner().s; foot.innerHTML = '' }
   try {
-    const r = await get('/api/e/' + L.key, { page: L.page, pageSize: PAGE, q: L.q || undefined, sort: def.defaultSort?.field || 'id', dir: def.defaultSort?.dir || 'desc', filters: L.status && def.statusField ? [{ field: def.statusField, op: 'eq', value: L.status }] : undefined })
-    L.total = r.total; L.rows = reset ? r.rows : [...L.rows, ...r.rows]
+    const r = await get('/api/e/' + L.key, { page: silent ? 1 : L.page, pageSize: keep, q: L.q || undefined, sort: def.defaultSort?.field || 'id', dir: def.defaultSort?.dir || 'desc', filters: L.status && def.statusField ? [{ field: def.statusField, op: 'eq', value: L.status }] : undefined })
+    L.total = r.total; L.rows = reset || silent ? r.rows : [...L.rows, ...r.rows]
     rows.innerHTML = L.rows.length ? L.rows.map(x => rowCard(def, x).s).join('') : empty(L.q || L.status ? 'No matches' : `No ${def.plural.toLowerCase()} yet`, canDo(def, 'create') ? `Tap “New ${def.label}” to add the first one.` : '').s
     foot.innerHTML = L.rows.length < L.total ? h`<button class="btn out" data-act="lmore">Load more (${L.rows.length} of ${L.total})</button>`.s : L.total ? h`<span class="m">${L.total} record${L.total === 1 ? '' : 's'}</span>`.s : ''
   } catch (e) { rows.innerHTML = errorCard(e).s } finally { L.busy = false }
@@ -47,6 +48,7 @@ function rowCard(def, r) {
   const st = sf && r[sf.name]
   return h`<a class="li" href="#/e/${def.key}/${r.id}"><span class="tx"><b>${r._title || '#' + r.id}</b><small>${sub.join(' · ')}</small></span><span class="rt">${st ? chip(optLabelOf(sf, st), statusClass(st, statusOpt(sf, st))) : ''}${money && r[money.name] != null ? h`<small class="m">${aed(r[money.name])}</small>` : ''}</span></a>`
 }
+export const refreshList = () => loadList(true, true)
 export const listActions = {
   async lmore() { L.page++; await loadList(false) },
   async lstatus(el) { L.status = el.dataset.v; $$('[data-act=lstatus]').forEach(b => b.classList.toggle('on', b === el)); await loadList(true) },

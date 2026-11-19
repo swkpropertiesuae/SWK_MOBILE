@@ -3,7 +3,7 @@ import { get, post, getSession, base, setServer, request, ApiError } from '../li
 import { X, can } from '../lib/state.js'
 import { aed, num, short, date, datetime, dubaiParts, TZ } from '../lib/format.js'
 import { $, $$, toast, empty, errorCard, chip, statusClass, humanize, confirmSheet, reasonSheet } from '../lib/ui.js'
-import { closing, pmt, split, rera, grossYield } from '../lib/calc.js'
+import { closing, pmt, split, rera, grossYield, roi, vat, paymentPlan, chequeSchedule, reraNoticeDeadline, sqftToSqm, sqmToSqft, aedToUsd, usdToAed, goldenVisa } from '../lib/calc.js'
 import { routeFor } from '../lib/routes.js'
 import { kpiTile, countUp } from '../lib/viz.js'
 
@@ -31,6 +31,7 @@ export async function dashboard() {
     title: 'Overview', after: () => countUp(), body: h`<div class="wrap">
     ${k.pipeline_value != null ? h`<div class="card cash"><small>Pipeline value</small><span class="n">${aed(k.pipeline_value)}</span><small>${k.open_jobs ?? 0} open deal files</small></div>` : ''}
     ${pulse ? h`<div class="lbl">Last 7 days</div><div class="kts">${[['leads', 'New leads'], ['viewings', 'Viewings'], ['calls', 'Calls']].filter(([key]) => Array.isArray(pulse[key])).map(([key, label]) => kpiTile({ label, value: pulse[key].reduce((a, x) => a + x.n, 0), series: pulse[key].map(x => x.n), sub: 'vs previous 3 days' }))}</div>` : ''}
+    <div class="lbl">Utilities</div><div class="tiles2">${[['p/utilities', 'All tools'], ['p/toolkit/mort', 'Mortgage'], ['p/toolkit/cost', 'Buyer costs'], ['p/toolkit/roi', 'Net ROI'], ['p/toolkit/comm', 'Commission'], ['p/toolkit/cheque', 'Rent cheques'], ['p/toolkit/plan', 'Payment plan'], ['p/utilities', 'AI assistant']].map(([to, l]) => h`<a class="tile s" href="#/${to}"><b>${l}</b></a>`)}</div>
     <div class="grid2">${shown.filter(x => x[0] !== 'pipeline_value').map(([key, l, t]) => h`<div class="k"><b>${t === 'aed' ? aed(k[key]) : num(k[key])}</b><span>${l}</span></div>`)}</div>
     ${alerts.length ? h`<div class="lbl">Needs attention</div><div class="list">${alerts.map(a => h`<div class="li warnbar"><span class="tx"><b>${a.title || a.text || a.message || a.label || 'Alert'}</b><small>${a.detail || a.body || ''}</small></span></div>`)}</div>` : ''}
     ${f.length ? h`<div class="lbl">Sales funnel</div><div class="card">${f.map(s => h`<div class="fn"><span>${s.stage}</span><div class="progress"><i data-w="${Math.round(s.count / max * 100)}"></i></div><b>${s.count}</b></div>`)}</div>` : ''}
@@ -116,29 +117,52 @@ export async function notifications() {
 }
 export const notifActions = { async readall() { try { await post('/api/notifications/read', {}); toast('Marked read'); return 'reload' } catch (e) { toast(e.message, 'bad') } } }
 
-// ---------------------------------------------------------------- toolkit
+// ---------------------------------------------------------------- calculators
+const TABS = [['mort', 'Mortgage'], ['cost', 'Buyer costs'], ['yield', 'Yield'], ['roi', 'Net ROI'], ['comm', 'Commission'], ['rera', 'RERA rent'], ['notice', 'RERA notice'], ['cheque', 'Rent cheques'], ['plan', 'Payment plan'], ['vat', 'VAT'], ['units', 'sqft ⇄ sqm'], ['fx', 'AED ⇄ USD'], ['visa', 'Golden Visa']]
 let TK = 'mort'
-export async function toolkit() {
-  const rates = await get('/api/swk-ops/market-pulse').then(d => d.mortgageRates || []).catch(() => [])
-  const body = { mort: h`<label>Buyer<select id="ty"><option value="80">Expat · 80% LTV</option><option value="85">UAE National · 85% LTV</option><option value="50">Off-plan · 50% LTV</option></select></label><label>Price (AED)<input id="p" inputmode="decimal"></label><label>Rate % ${rates[0] ? h`<small class="m">(${rates[0].bank}: ${rates[0].fixedRate5Y}% 5-yr fixed)</small>` : ''}<input id="r" inputmode="decimal" value="${rates[0]?.fixedRate5Y ?? ''}"></label><label>Years<input id="y" inputmode="numeric" value="25"></label>`,
-    cost: h`<label>Price (AED)<input id="p" inputmode="decimal"></label><label class="ck"><input id="mg" type="checkbox">Mortgage</label><label>Loan (AED)<input id="l" inputmode="decimal"></label>`,
-    yield: h`<label>Price (AED)<input id="p" inputmode="decimal"></label><label>Annual rent (AED)<input id="a" inputmode="decimal"></label>`,
-    comm: h`<label>Sale price (AED)<input id="p" inputmode="decimal"></label><label>Commission %<input id="c" inputmode="decimal" value="2"></label><label>3rd-party A2A share (AED)<input id="a" inputmode="decimal" value="0"></label>`,
-    rera: h`<label>Current annual rent (AED)<input id="rt" inputmode="decimal"></label><label>RERA index average (AED)<input id="ix" inputmode="decimal"></label>` }[TK]
-  return { title: 'Calculators', after: calc, body: h`<div class="wrap"><div class="chips">${[['mort', 'Mortgage'], ['cost', 'Buyer cost'], ['yield', 'Yield'], ['comm', 'Commission'], ['rera', 'RERA rent']].map(([k, l]) => h`<button class="chip ${TK === k ? 'on' : ''}" data-act="tk" data-v="${k}">${l}</button>`)}</div><form class="card" data-nosubmit data-calc>${body}<div id="o" class="out" aria-live="polite"></div></form><div class="note">Indicative — verify with RERA / DLD. DLD 4% + AED 580, agency 2% + VAT, registration 0.25% + AED 290.</div></div>` }
+const inp = (id, label, v = '', extra = '') => h`<label>${label}<input id="${id}" inputmode="decimal" value="${v}" ${extra}></label>`
+export async function toolkit(_, sub) {
+  if (sub && TABS.some(t => t[0] === sub)) TK = sub
+  const rates = TK === 'mort' ? await get('/api/swk-ops/market-pulse').then(d => d.mortgageRates || []).catch(() => []) : []
+  const F = {
+    mort: h`<label>Buyer<select id="ty"><option value="80">Expat · 80% LTV</option><option value="85">UAE National · 85% LTV</option><option value="50">Off-plan · 50% LTV</option></select></label>${inp('p', 'Price (AED)')}<label>Rate % ${rates[0] ? h`<small class="m">(${rates[0].bank}: ${rates[0].fixedRate5Y}% 5-yr fixed)</small>` : ''}<input id="r" inputmode="decimal" value="${rates[0]?.fixedRate5Y ?? ''}"></label>${inp('y', 'Years', 25)}`,
+    cost: h`${inp('p', 'Price (AED)')}<label class="ck"><input id="mg" type="checkbox">Mortgage</label>${inp('l', 'Loan (AED)')}`,
+    yield: h`${inp('p', 'Price (AED)')}${inp('a', 'Annual rent (AED)')}`,
+    roi: h`${inp('p', 'Price (AED)')}${inp('a', 'Annual rent (AED)')}${inp('sc', 'Service charge / year (AED)', 0)}${inp('oc', 'Other costs / year (AED)', 0)}`,
+    comm: h`${inp('p', 'Sale price (AED)')}${inp('c', 'Commission %', 2)}${inp('a', '3rd-party A2A share (AED)', 0)}`,
+    rera: h`${inp('rt', 'Current annual rent (AED)')}${inp('ix', 'RERA index average (AED)')}`,
+    notice: h`<label>Tenancy expiry date<input id="dt" type="date"></label>`,
+    cheque: h`${inp('a', 'Annual rent (AED)')}<label>Cheques<select id="n"><option>1</option><option>2</option><option>3</option><option selected>4</option><option>6</option><option>12</option></select></label><label>First cheque date<input id="dt" type="date"></label>`,
+    plan: h`${inp('p', 'Price (AED)')}${inp('d', 'Down payment %', 20)}${inp('n', 'Instalments', 4)}${inp('i', 'Each instalment %', 10)}${inp('hp', 'On handover %', 40)}`,
+    vat: h`${inp('a', 'Amount (AED)')}${inp('r', 'VAT %', 5)}<label class="ck"><input id="inc" type="checkbox">Amount includes VAT</label>`,
+    units: h`${inp('sf', 'Square feet')}${inp('sm', 'Square metres')}`,
+    fx: h`${inp('aed', 'AED')}${inp('usd', 'USD')}<span class="m">AED is pegged at 3.6725 per USD.</span>`,
+    visa: h`${inp('p', 'Property value (AED)')}`
+  }[TK]
+  return { title: 'Calculators', after: calc, body: h`<div class="wrap"><div class="chips">${TABS.map(([k, l]) => h`<button class="chip ${TK === k ? 'on' : ''}" data-act="tk" data-v="${k}">${l}</button>`)}</div><form class="card" data-nosubmit data-calc>${F}<div id="o" class="out" aria-live="polite"></div></form><div class="note">Indicative — verify with RERA / DLD. DLD 4% + AED 580, agency 2% + VAT, registration 0.25% + AED 290.</div></div>` }
 }
 export const tkActions = { tk(el) { TK = el.dataset.v; return 'reload' } }
 const g = id => { const v = parseFloat(String($('#' + id)?.value || '').replace(/,/g, '')); return Number.isFinite(v) ? v : 0 }
-const outRows = a => a.map(([k, v, b]) => h`<div class="row"><span class="m">${k}</span>${b ? h`<span class="big">${v}</span>` : h`<b>${v}</b>`}</div>`)
-export function calc() {
+const rows = a => a.map(([k, v, b]) => h`<div class="row"><span class="m">${k}</span>${b ? h`<span class="big">${v}</span>` : h`<b>${v}</b>`}</div>`)
+export function calc(ev) {
   const o = $('#o'); if (!o) return
-  const R = a => { o.innerHTML = outRows(a).map(x => x.s).join('') }
-  const none = () => { o.innerHTML = '<span class="m">Enter the figures above.</span>' }
-  if (TK === 'mort') { const p = g('p'), l = p * g('ty') / 100, m = pmt(l, g('r'), g('y')); return p ? R([['Down payment', aed(p - l)], ['Loan', aed(l)], ['Monthly payment', aed(m), 1], ['Total interest', aed(Math.max(0, m * g('y') * 12 - l))]]) : none() }
-  if (TK === 'cost') { const c = closing(g('p'), { mortgage: $('#mg').checked, loan: g('l') }); return g('p') ? R([['DLD 4%', aed(c.dld)], ['Admin', aed(c.admin)], ['Agency 2%', aed(c.agency)], ['VAT 5% on agency', aed(c.vat)], ['Mortgage registration', aed(c.mReg)], ['Total fees', aed(c.total), 1], ['Cash needed', aed(c.cash)]]) : none() }
-  if (TK === 'yield') return g('p') ? R([['Gross yield', grossYield(g('p'), g('a')).toFixed(2) + '%', 1]]) : none()
-  if (TK === 'comm') { const gr = g('p') * g('c') / 100, s = split(gr, g('a')); return g('p') ? R([['Gross commission', aed(gr)], ['VAT 5%', aed(s.vat)], ['Company net pool', aed(s.pool)], ['SWK 50%', aed(s.swk), 1], ['Advisor 50%', aed(s.agent), 1]]) : none() }
-  const r = rera(g('rt'), g('ix')); return g('rt') ? R([['Below index', r.below + '%'], ['Max increase', r.pct + '%', 1], ['Max new rent', aed(r.max)]]) : none()
+  const R = a => { o.innerHTML = rows(a).map(x => x.s).join('') }, none = () => { o.innerHTML = '<span class="m">Enter the figures above.</span>' }
+  const t = ev?.target?.id
+  switch (TK) {
+    case 'mort': { const p = g('p'), l = p * g('ty') / 100, m = pmt(l, g('r'), g('y')); return p ? R([['Down payment', aed(p - l)], ['Loan', aed(l)], ['Monthly payment', aed(m), 1], ['Total interest', aed(Math.max(0, m * g('y') * 12 - l))]]) : none() }
+    case 'cost': { const c = closing(g('p'), { mortgage: $('#mg').checked, loan: g('l') }); return g('p') ? R([['DLD 4%', aed(c.dld)], ['Admin', aed(c.admin)], ['Agency 2%', aed(c.agency)], ['VAT 5% on agency', aed(c.vat)], ['Mortgage registration', aed(c.mReg)], ['Total fees', aed(c.total), 1], ['Cash needed', aed(c.cash)]]) : none() }
+    case 'yield': return g('p') ? R([['Gross yield', grossYield(g('p'), g('a')).toFixed(2) + '%', 1]]) : none()
+    case 'roi': { if (!g('p')) return none(); const r = roi(g('p'), g('a'), g('sc'), g('oc')); return R([['Gross yield', r.grossYield + '%'], ['Net yield (after costs, incl. closing fees)', r.netYield + '%', 1], ['Net income / year', aed(r.net)], ['Total invested', aed(r.invested)], ['Payback', r.payback ? r.payback + ' years' : '—']]) }
+    case 'comm': { const gr = g('p') * g('c') / 100, s = split(gr, g('a')); return g('p') ? R([['Gross commission', aed(gr)], ['VAT 5%', aed(s.vat)], ['Company net pool', aed(s.pool)], ['SWK 50%', aed(s.swk), 1], ['Advisor 50%', aed(s.agent), 1]]) : none() }
+    case 'rera': { const r = rera(g('rt'), g('ix')); return g('rt') ? R([['Below index', r.below + '%'], ['Max increase', r.pct + '%', 1], ['Max new rent', aed(r.max)]]) : none() }
+    case 'notice': { const d = $('#dt').value; return d ? R([['Landlord notice deadline (90 days before expiry)', reraNoticeDeadline(d), 1]]) : none() }
+    case 'cheque': { const d = $('#dt').value, a = g('a'); if (!d || !a) return none(); const s = chequeSchedule(a, +$('#n').value, d); return R(s.map(c => [`Cheque ${c.n} · ${c.date}`, aed(c.amount)])) }
+    case 'plan': { if (!g('p')) return none(); const pl = paymentPlan(g('p'), g('d'), Math.max(0, Math.min(40, Math.trunc(g('n')))), g('i'), g('hp')); return R([...pl.rows.map(r => [`${r.label} · ${r.pct}%`, aed(r.amount)]), ['Total', pl.total + '%' + (pl.balanced ? '' : ' — must equal 100%'), 1]]) }
+    case 'vat': { if (!g('a')) return none(); const v = vat(g('a'), g('r'), $('#inc').checked); return R([['Net', aed(v.net)], ['VAT', aed(v.vat)], ['Gross', aed(v.gross), 1]]) }
+    case 'units': { if (t === 'sm') { $('#sf').value = g('sm') ? sqmToSqft(g('sm')) : '' } else { $('#sm').value = g('sf') ? sqftToSqm(g('sf')) : '' } return (o.innerHTML = '') }
+    case 'fx': { if (t === 'usd') { $('#aed').value = g('usd') ? usdToAed(g('usd')) : '' } else { $('#usd').value = g('aed') ? aedToUsd(g('aed')) : '' } return (o.innerHTML = '') }
+    case 'visa': { if (!g('p')) return none(); const v = goldenVisa(g('p')); return R([['10-year Golden Visa by property', v.eligible ? 'Eligible (≥ AED 2,000,000)' : 'Not eligible', 1], ...(v.eligible ? [] : [['Shortfall', aed(v.shortfall)]]), ['Note', 'Mortgaged property needs bank / DLD confirmation']]) }
+  }
 }
 
 // ---------------------------------------------------------------- account

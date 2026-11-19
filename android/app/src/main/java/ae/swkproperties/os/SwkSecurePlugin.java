@@ -14,6 +14,9 @@ import androidx.core.content.ContextCompat;
 import androidx.fragment.app.FragmentActivity;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKey;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
+import com.google.android.gms.tasks.CancellationTokenSource;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -132,5 +135,28 @@ public class SwkSecurePlugin extends Plugin {
         r.put("battery_pct", DeviceTelemetry.batteryPercent(getContext())); r.put("is_charging", DeviceTelemetry.isCharging(getContext()));
         r.put("network_type", DeviceTelemetry.networkType(getContext())); r.put("duty_service_running", SwkDutyLocationService.isRunning());
         call.resolve(r);
+    }
+
+    /** One fresh high-accuracy fix, including the Android mock-provider flag (the server rejects mock fixes as attendance evidence). */
+    @PluginMethod
+    public void getFix(PluginCall call) {
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            String[] perms = Build.VERSION.SDK_INT >= 33 ? new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.POST_NOTIFICATIONS} : new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION};
+            getActivity().runOnUiThread(() -> ActivityCompat.requestPermissions(getActivity(), perms, 7301));
+            call.reject("location_permission_required"); return;
+        }
+        try {
+            LocationServices.getFusedLocationProviderClient(getContext())
+                .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, new CancellationTokenSource().getToken())
+                .addOnSuccessListener(l -> {
+                    if (l == null) { call.reject("no_fix"); return; }
+                    JSObject r = new JSObject();
+                    r.put("lat", l.getLatitude()); r.put("lng", l.getLongitude()); r.put("accuracy", l.getAccuracy());
+                    r.put("capturedAt", new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US) {{ setTimeZone(java.util.TimeZone.getTimeZone("UTC")); }}.format(new java.util.Date(l.getTime())));
+                    r.put("mock", Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? l.isMock() : l.isFromMockProvider());
+                    call.resolve(r);
+                })
+                .addOnFailureListener(e -> call.reject("no_fix"));
+        } catch (SecurityException e) { call.reject("location_permission_required"); }
     }
 }

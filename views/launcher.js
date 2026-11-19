@@ -4,7 +4,7 @@ import { can, X } from '../lib/state.js'
 import { greeting, dubaiParts } from '../lib/format.js'
 import { routeFor, ICO } from '../lib/routes.js'
 
-const visible = i => !i[3] || can(i[3], 'view')
+const visible = i => !i[3] || can(i[3], i[4] || 'view')
 export const sections = () => NAV.map(s => ({ ...s, items: s.items.filter(visible) })).filter(s => s.items.length)
 const recents = () => { try { return JSON.parse(localStorage.getItem('swk.recent') || '[]') } catch { return [] } }
 export const remember = href => { try { localStorage.setItem('swk.recent', JSON.stringify([href, ...recents().filter(x => x !== href)].slice(0, 6))) } catch {} }

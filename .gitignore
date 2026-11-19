@@ -10,3 +10,4 @@ android/local.properties
 *.jks
 *.keystore
 credentials.env
+*.aab

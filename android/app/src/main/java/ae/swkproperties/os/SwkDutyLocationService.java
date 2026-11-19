@@ -64,7 +64,7 @@ public class SwkDutyLocationService extends Service {
     public static final String EXTRA_DEVICE_ID = "deviceId";
 
     private static final long UPDATE_INTERVAL_MS = 30_000L;
-    private static final long FASTEST_INTERVAL_MS = 15_000L;
+    private static final long FASTEST_INTERVAL_MS = 10_000L;
     private static final long MAX_BATCH_DELAY_MS = 90_000L;
     private static final int MAX_BUFFERED_POINTS = 500;
     private static final int BATCH_LIMIT = 50;
@@ -179,33 +179,36 @@ public class SwkDutyLocationService extends Service {
         return p;
     }
 
-    /** Uploads buffered fixes. Runs on the single io thread. */
+    /** Uploads the freshest buffered fix to /api/mobile/field/{id}/point. The server only accepts fixes younger than 90 s with accuracy <= 100 m and rejects mock locations. */
     private void flush() {
-        List<JSONObject> batch;
+        JSONObject latest;
         synchronized (pending) {
             if (pending.isEmpty()) return;
-            batch = new ArrayList<>(pending.subList(0, Math.min(BATCH_LIMIT, pending.size())));
+            latest = pending.get(pending.size() - 1);
+            pending.clear();
         }
         if (!isAllowedServer(serverUrl) || sessionToken.isEmpty()) return;
         try {
             JSONObject body = new JSONObject();
-            body.put("device_id", deviceId);
-            body.put("battery_pct", DeviceTelemetry.batteryPercent(this));
-            body.put("network_type", DeviceTelemetry.networkType(this));
-            body.put("points", new JSONArray(batch));
-            int status = post("/api/swk-one/field-duty/" + sessionId + "/location-batch", body);
-            if (status >= 200 && status < 300) {
-                synchronized (pending) {
-                    pending.removeAll(batch);
-                }
-            } else if (status == 400 || status == 401 || status == 403 || status == 404) {
-                // Session ended / expired / not ours: stop collecting instead of retrying forever.
+            body.put("lat", latest.getDouble("lat"));
+            body.put("lng", latest.getDouble("lng"));
+            body.put("accuracy", Math.max(1, latest.getDouble("accuracy_m")));
+            body.put("capturedAt", latest.getString("timestamp"));
+            body.put("mock", latest.getBoolean("mock"));
+            int status = post("/api/mobile/field/" + sessionId + "/point", body);
+            if (status == 401 || status == 403 || status == 404) {
+                // Signed out / not our session: stop collecting instead of retrying forever.
+                finishDuty(false);
+            } else if (status == 400 && lastError.contains("ended")) {
                 finishDuty(false);
             }
+            // other 400s (stale / inaccurate / mock fix) are dropped; the next fix is sent normally
         } catch (Exception ignored) {
-            // Offline or server unreachable: keep the points and retry with the next fix.
+            // Offline or server unreachable: the next fix is sent when the connection is back.
         }
     }
+
+    private volatile String lastError = "";
 
     private int post(String path, JSONObject body) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(serverUrl + path).openConnection();
@@ -222,7 +225,14 @@ public class SwkDutyLocationService extends Service {
             try (OutputStream out = c.getOutputStream()) {
                 out.write(bytes);
             }
-            return c.getResponseCode();
+            int code = c.getResponseCode();
+            lastError = "";
+            if (code >= 400) {
+                try (java.io.InputStream es = c.getErrorStream()) {
+                    if (es != null) lastError = new String(es.readAllBytes(), StandardCharsets.UTF_8).toLowerCase(java.util.Locale.ROOT);
+                } catch (Exception ignored) { }
+            }
+            return code;
         } finally {
             c.disconnect();
         }
@@ -247,7 +257,7 @@ public class SwkDutyLocationService extends Service {
                     flush();
                     JSONObject body = new JSONObject();
                     body.put("notes", "Duty ended from the SWK ONE notification.");
-                    post("/api/swk-one/field-duty/" + endedSession + "/end", body);
+                    post("/api/mobile/field/" + endedSession + "/end", new JSONObject());
                 } catch (Exception ignored) {
                     // Server will auto-expire the session at its scheduled end.
                 }
