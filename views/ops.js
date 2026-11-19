@@ -1,6 +1,6 @@
 // Strict operational screens: Lead Command (SLA / follow-up / conversion) and Field Duty (live GPS).
 import { h } from '../lib/html.js'
-import { get, post, put, base, getSession, reasonHeader, ApiError } from '../lib/api.js'
+import { get, post, put, request, base, getSession, reasonHeader, ApiError } from '../lib/api.js'
 import { entity, can, X } from '../lib/state.js'
 import { optValue, datetime, num } from '../lib/format.js'
 import { $, toast, empty, errorCard, chip, statusClass, sheet, reasonSheet, confirmSheet } from '../lib/ui.js'
@@ -64,5 +64,60 @@ export const opsActions = {
     const st = def.fields.find(f => f.name === 'status').options.map(optValue).find(s => /lost|unqualif|disqual/i.test(s))
     if (!st) { toast('This workspace has no “lost” status.', 'bad'); return }
     try { const l = LC.leads.find(x => x.id === +el.dataset.id); await put(`/api/e/leads/${el.dataset.id}`, { status: st, ...(opt ? { non_conversion_reason: opt } : {}), non_conversion_notes: reason, version: l?.version }, { headers: reasonHeader(reason) }); toast('Lead closed'); return 'reload' } catch (e) { toast(e.message, 'bad') }
+  },
+  async mdcall(el) {
+    const id = +el.dataset.id
+    try {
+      const r = await post(`/api/crm-vault/my-assignments/${id}/masked-call`, {})
+      toast(r.message || 'SWK Masked Bridge calling your phone now')
+      return 'reload'
+    } catch (e) { toast(e.message || 'Masked call unavailable', 'bad') }
+  },
+  async mdwa(el) {
+    const id = +el.dataset.id
+    const msg = await sheet('Masked WhatsApp Relay', (root, close) => {
+      root.innerHTML = h`<p class="m">Sent via SWK Official WhatsApp Business. Owner number remains strictly hidden.</p><label>Message<textarea id="mw" rows="3" maxlength="1000" placeholder="Hello, calling from SWK Properties regarding your unit..."></textarea></label><p class="bad-t" id="me" role="alert"></p><button class="btn" id="go" type="button">Send Masked WhatsApp</button>`.s
+      $('#go', root).addEventListener('click', () => { const v = $('#mw', root).value.trim(); if (v.length < 3) { $('#me', root).textContent = 'Enter at least 3 characters.'; return } close(v) })
+    })
+    if (!msg) return
+    try { await post(`/api/crm-vault/my-assignments/${id}/masked-whatsapp`, { message: msg }); toast('Masked WhatsApp sent'); return 'reload' } catch (e) { toast(e.message, 'bad') }
+  },
+  async mdupd(el) {
+    const id = +el.dataset.id
+    const cur = MD.find(x => x.id === id)
+    const r = await sheet('Update Assigned Deal', (root, close) => {
+      const sts = ['Assigned', 'In Progress', 'Viewing Scheduled', 'Offer / MOU', 'Closed Won', 'Closed Lost', 'On Hold']
+      root.innerHTML = h`<label>Status<select id="ms">${sts.map(s => h`<option ${s === cur?.vault_status ? 'selected' : ''}>${s}</option>`)}</select></label><label>Notes / Outcome<textarea id="mn" rows="3" maxlength="2000">${cur?.agent_notes || ''}</textarea></label><button class="btn" id="go" type="button">Save Update</button>`.s
+      $('#go', root).addEventListener('click', () => close({ vault_status: $('#ms', root).value, agent_notes: $('#mn', root).value.trim() }))
+    })
+    if (!r) return
+    try { await request('PATCH', `/api/crm-vault/my-assignments/${id}`, { body: r }); toast('Deal updated'); return 'reload' } catch (e) { toast(e.message, 'bad') }
+  }
+}
+
+let MD = []
+export async function myAssignedDeals() {
+  const res = await get('/api/crm-vault/my-assignments', { pageSize: 100 })
+  MD = res.rows || []
+  const aed = v => (Number.isFinite(Number(v)) && Number(v) > 0 ? 'AED ' + Math.round(Number(v)).toLocaleString('en-AE') : '')
+  const card = r => h`<div class="card">
+    <div class="row"><b class="hd t">${r.building_or_project || 'Property'}</b>${chip(r.vault_status || 'Assigned', statusClass(r.vault_status || 'Assigned'))}</div>
+    <span class="m">${r.dubai_area_community || ''} · ${r.external_deal_id}</span>
+    <span class="m">Unit: ${r.exact_unit_door_no || '—'}${r.property_layout_type ? ' · ' + r.property_layout_type : ''}${r.size_sqft ? ' · ' + Math.round(r.size_sqft) + ' sqft' : ''}</span>
+    <span class="m">Owner: ${r.owner_name || 'Protected Owner'}${aed(r.target_deal_value_aed) ? ' · ' + aed(r.target_deal_value_aed) : ''}</span>
+    <span class="m">🔒 ${r.phone_masked || 'MASKED'} (Hard-Masked · Never in Call Log)</span>
+    ${r.closing_strategy_playbook ? h`<span class="m">Playbook: ${r.closing_strategy_playbook}</span>` : ''}
+    <div class="row gap">
+      ${r.can_call_masked ? h`<button class="btn" data-act="mdcall" data-id="${r.id}">Call (Masked)</button>` : ''}
+      ${r.can_whatsapp_masked ? h`<button class="btn out" data-act="mdwa" data-id="${r.id}">Masked WA</button>` : ''}
+      <button class="btn out" data-act="mdupd" data-id="${r.id}">Update</button>
+    </div>
+  </div>`
+  return {
+    title: 'My Assigned Deals',
+    body: h`<div class="wrap">
+      <div class="note">Owner phone numbers are permanently hard-masked. Masked calls ring you from SWK Office so owner numbers never appear in your phone history.</div>
+      ${MD.length ? h`<div class="list">${MD.map(card)}</div>` : empty('No assigned deals yet', 'Deals dispatched to you by Admin, Shabib, or Haseeb will appear here.')}
+    </div>`,
   }
 }

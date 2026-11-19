@@ -7,7 +7,7 @@ import { loginView, changePasswordView } from './views/auth.js'
 import { launcher, appView, remember, svg } from './views/launcher.js'
 import { entityList, entityDetail, entityForm, listActions, detailActions, formActions, listSearch, submitForm, pickRef, notFound } from './views/entity.js'
 import * as P from './views/pages.js'
-import { leadCommand, opsActions } from './views/ops.js'
+import { leadCommand, myAssignedDeals, opsActions } from './views/ops.js'
 import { attendance, dailyClose, teamLive, utilities, teamActions } from './views/team.js'
 import { startSync, stopSync, kickSync, syncState } from './lib/sync.js'
 import { refreshList } from './views/entity.js'
@@ -23,7 +23,7 @@ const ACTIONS = {
   logout: async () => { if (await confirmSheet('Sign out', 'You will need to sign in again.', 'Sign out')) await signOut() },
   pick: el => pickRef(el)
 }
-const PAGES = { dashboard: P.dashboard, pipeline: P.pipeline, market: P.market, calendar: P.calendar, bin: P.bin, withdrawals: P.withdrawals, toolkit: P.toolkit, leadcmd: leadCommand, attendance, dailyclose: dailyClose, teamlive: teamLive, utilities }
+const PAGES = { dashboard: P.dashboard, pipeline: P.pipeline, market: P.market, calendar: P.calendar, bin: P.bin, withdrawals: P.withdrawals, toolkit: P.toolkit, leadcmd: leadCommand, mydeals: myAssignedDeals, attendance, dailyclose: dailyClose, teamlive: teamLive, utilities }
 
 async function resolve(parts) {
   const [a, b, c, d] = parts
